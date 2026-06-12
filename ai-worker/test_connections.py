@@ -76,7 +76,7 @@ async def test_ollama():
         response = await client.generate(
             model=OLLAMA_MODEL,
             prompt="Describe this image in one word.",
-            images=[dummy_jpeg_b64],
+        images=[dummy_jpeg_b64.decode("utf-8")],
         )
 
         # FIX: ollama Python library returns a typed object, not a dict — use attribute access
