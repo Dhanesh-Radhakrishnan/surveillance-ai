@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+
+  # ─── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16          # pg16 + pgvector extension bundled
+    container_name: surveillance_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-surveillance}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-2@2serveillance}
+      POSTGRES_DB: ${POSTGRES_DB:-surveillance_db}
+    ports:
+      - "0.0.0.0:5432:5432"               # LAN-accessible; restrict with firewall in prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-surveillance} -d ${POSTGRES_DB:-surveillance_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: surveillance_redis
+    restart: unless-stopped
+    command: redis-server --bind 0.0.0.0 --protected-mode no
+    ports:
+      - "0.0.0.0:6379:6379"               # LAN-accessible
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
