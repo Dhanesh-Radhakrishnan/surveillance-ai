@@ -13,3 +13,4 @@ Two-stage inference pipeline:
 | Ryzen 5 6600H + RTX 3050 | Backend, AI worker, Ollama, DB |
 | i5 14th gen (LAN) | React frontend / reserve camera node |
 | i3 7th gen (LAN, reserve) | Multi-node capable |
+
