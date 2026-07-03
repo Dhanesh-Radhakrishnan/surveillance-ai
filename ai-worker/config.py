@@ -53,6 +53,3 @@ OLLAMA_REQUEST_TIMEOUT: int = 60
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-REDIS_EVENT_QUEUE = os.getenv("REDIS_EVENT_QUEUE", "detection_events")
