@@ -1,11 +1,12 @@
 """
 ollama_worker.py
-Week 3 — Task 3: Async Redis worker — dequeue → load snapshot → send to Ollama.
+Week 3 — Task 3 + 7: Async Redis worker — dequeue → load snapshot → send to Ollama.
+Includes error handling for Ollama timeout, missing snapshot, and DB write failure.
 
 Single responsibility: pull DetectionEvents off the Redis queue Week 2 built,
 load the referenced snapshot from disk, and get a description back from
-moondream2. Does NOT touch PostgreSQL — that's T5, wired in separately so
-this module stays testable in isolation (SOLID).
+moondream2. Does NOT touch PostgreSQL directly — that's db_writer.py, wired in
+separately so this module stays testable in isolation (SOLID).
 
 Run:
     python ollama_worker.py
@@ -16,7 +17,6 @@ import base64
 import gc
 import json
 import logging
-import db_writer
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +25,7 @@ from ollama import AsyncClient
 from redis.exceptions import RedisError
 
 import config
+import db_writer
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -47,12 +48,12 @@ DESCRIPTION_PROMPT = (
 
 @dataclass
 class AnalysisResult:
-    """What T5 will need to write a SecurityEvent row."""
+    """What db_writer needs to write a SecurityEvent row."""
     camera_id: str
     snapshot_path: str
     confidence: float
     timestamp: str
-    ai_description: str | None  # None if Ollama failed — T7 handles this
+    ai_description: str | None  # None if Ollama failed or snapshot missing
 
 
 class OllamaWorker:
@@ -99,7 +100,7 @@ class OllamaWorker:
         """
         Reads the JPEG from disk and base64-encodes it.
         WHY sync: local disk read is cheap; not worth an aiofiles dependency.
-        Returns None (not raise) on missing file — T7 owns the retry/skip policy.
+        Returns None (not raise) on missing file — caller decides what to do.
         """
         path = Path(snapshot_path)
         if not path.exists():
@@ -109,18 +110,34 @@ class OllamaWorker:
         return base64.standard_b64encode(raw).decode("utf-8")
 
     async def _analyze(self, image_b64: str) -> str | None:
-        """POST to Ollama via the async client. Returns description or None on failure."""
+        """
+        POST to Ollama via the async client, with a hard timeout.
+
+        WHY asyncio.wait_for: AsyncClient.generate() has no built-in timeout —
+        without this, a stalled Ollama process (model unload, GPU contention)
+        blocks the worker loop forever instead of failing fast.
+        WHEN: every dequeued event with a valid snapshot.
+        """
         try:
-            response = await self._ollama.generate(
-                model=self._model,
-                prompt=DESCRIPTION_PROMPT,
-                images=[image_b64],
+            response = await asyncio.wait_for(
+                self._ollama.generate(
+                    model=self._model,
+                    prompt=DESCRIPTION_PROMPT,
+                    images=[image_b64],
+                ),
+                timeout=config.OLLAMA_REQUEST_TIMEOUT,
             )
             text = response.response
             if not text:
                 logger.warning("Ollama returned an empty response body.")
                 return None
             return text.strip()
+        except asyncio.TimeoutError:
+            logger.error(
+                "Ollama request timed out after %ds — description will be null.",
+                config.OLLAMA_REQUEST_TIMEOUT,
+            )
+            return None
         except Exception:
             logger.exception("Ollama analysis failed — description will be null.")
             return None
@@ -154,10 +171,22 @@ class OllamaWorker:
         return result
 
     async def run_forever(self) -> None:
+        """
+        WHY the outer try/except: process_one() calls Redis + Ollama + dict
+        parsing — any unexpected error here (not just the ones already handled
+        internally) must not kill the worker process on 24/7 hardware.
+        WHEN: runs until Ctrl+C.
+        """
         logger.info("Worker loop starting — Ctrl+C to stop.")
         try:
             while True:
-                result = await self.process_one()
+                try:
+                    result = await self.process_one()
+                except Exception:
+                    logger.exception("Unhandled error in process_one — skipping this cycle.")
+                    await asyncio.sleep(1)
+                    continue
+
                 if result is not None:
                     await db_writer.write_security_event(
                         camera_id=result.camera_id,
