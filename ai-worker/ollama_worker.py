@@ -16,6 +16,7 @@ import base64
 import gc
 import json
 import logging
+import db_writer
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -158,11 +159,14 @@ class OllamaWorker:
             while True:
                 result = await self.process_one()
                 if result is not None:
-                    # T5 hook: DB write goes here once the async session
-                    # dependency exists — deliberately left as a stub.
-                    pass
+                    await db_writer.write_security_event(
+                        camera_id=result.camera_id,
+                        image_path=result.snapshot_path,
+                        ai_description=result.ai_description,
+                    )
         finally:
             await self._redis.aclose()
+            await db_writer.dispose_engine()
             logger.info("Redis connection closed.")
 
 

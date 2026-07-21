@@ -46,6 +46,13 @@ YOLO_TARGET_CLASS: int = 0          # COCO class 0 = "person" — never change t
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 REDIS_QUEUE_KEY: str = "surveillance:detection_events"
 
+# ── PostgreSQL (Week 3, Task 5) ───────────────────────────────────────────────
+POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "surveillance")
+POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "2@2serveillance")
+POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "surveillance_db")
+POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
+POSTGRES_PORT: int = int(os.environ.get("POSTGRES_PORT", "5432"))
+
 # ── Ollama (referenced by Week 3 worker) ─────────────────────────────────────
 OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = "moondream:latest"   # NEVER change without hardware review
@@ -53,3 +60,4 @@ OLLAMA_REQUEST_TIMEOUT: int = 60
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+
