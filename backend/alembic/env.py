@@ -19,23 +19,27 @@ Note on the password:
   In a URL DSN the '@' MUST be percent-encoded as %40, giving:
     2%402serveillance
   asyncpg decodes this automatically; no manual unquoting needed.
-
-Auto-generate behaviour:
-  When models are added in Week 3+, import the SQLAlchemy Base here so
-  autogenerate can diff the schema:
-
-    from backend.db.models import Base          # add this import
-    target_metadata = Base.metadata             # replace None below
 """
 
 import asyncio
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+
+# This file lives at backend/alembic/env.py — parents[2] is the repo root
+# (surveillance-ai/). Without this, running `alembic` from inside backend/
+# fails with ModuleNotFoundError: No module named 'backend', because the
+# 'backend' package itself isn't visible from inside its own directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+# Week 3: import the ORM models so autogenerate can diff against them.
+from backend.db.models import Base
 
 # ── Alembic Config object ─────────────────────────────────────────────────────
 config = context.config
@@ -57,14 +61,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # ── Target metadata ───────────────────────────────────────────────────────────
-# Set to Base.metadata once SQLAlchemy models are defined (Week 3).
-# Until then, autogenerate will produce empty migrations — which is correct
-# for W1T7: we just want to confirm Alembic wires up and connects cleanly.
-#
-# Week 3 change:
-#   from backend.db.models import Base
-#   target_metadata = Base.metadata
-target_metadata = None
+# Week 3 change: now points at the real ORM metadata instead of None, so
+# `alembic revision --autogenerate` can detect model changes going forward.
+target_metadata = Base.metadata
 
 
 # ── Offline migrations (generates SQL without a live DB connection) ───────────
@@ -89,7 +88,7 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        # compare_type=True  ← uncomment in Week 3+ to detect column type changes
+        compare_type=True,  # Week 3+: detect column type changes, not just add/drop
     )
     with context.begin_transaction():
         context.run_migrations()
