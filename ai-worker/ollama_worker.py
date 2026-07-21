@@ -34,8 +34,13 @@ logger = logging.getLogger("ollama_worker")
 
 # W3T4 will refine this prompt — placeholder mirrors the Week 1 smoke test.
 DESCRIPTION_PROMPT = (
-    "Describe what you see in this security camera image in 10 words or fewer. "
-    "Focus on people, actions, and location."
+    "You are reviewing a single security camera snapshot. "
+    "In one sentence of 15 words or fewer, describe the person: "
+    "their approximate action and location in frame (e.g. 'walking near front door', "
+    "'standing by driveway'). "
+    "Ignore pets, vehicles, shadows, reflections, and lighting changes — do not mention them. "
+    "If you cannot clearly identify a person, start your reply with 'Uncertain:' "
+    "followed by the briefest reason."
 )
 
 
