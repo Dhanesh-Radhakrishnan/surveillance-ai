@@ -34,16 +34,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ollama_worker")
 
-# W3T4 will refine this prompt — placeholder mirrors the Week 1 smoke test.
+# W3T4 final version — subject-first, no negation clause.
+# WHY no "ignore X/Y/Z": small VLMs handle negation unreliably — the
+# forbidden object still gets attended to and often shows up anyway
+# (confirmed empirically: "urn on countertop" persisted through two
+# negation-based prompt attempts). Now that stage1_pipeline.py crops the
+# snapshot to the person's bounding box before it reaches Ollama, background
+# objects are removed from the pixels instead of relied on to be ignored.
 DESCRIPTION_PROMPT = (
-    "You are reviewing a single security camera snapshot. "
-    "In one sentence of 15 words or fewer, describe the person: "
-    "their approximate action and location in frame (e.g. 'walking near front door', "
-    "'standing by driveway'). "
-    "Ignore pets, vehicles, shadows, reflections, and lighting changes — do not mention them. "
-    "If you cannot clearly identify a person, start your reply with 'Uncertain:' "
-    "followed by the briefest reason."
+    "Describe this person's position and what they are doing, in one short sentence."
 )
+
+# Generation options passed to every Ollama call:
+#   num_predict — hard ceiling on output tokens. Prevents the run-on,
+#     duplicate-paragraph rambling seen with the unbounded default
+#     (moondream2 would restart with "The image shows a man..." mid-response).
+#   temperature  — lower value = more deterministic/conservative, reduces
+#     confabulation of objects that aren't clearly in frame.
+GENERATION_OPTIONS = {"num_predict": 40, "temperature": 0.3}
 
 
 @dataclass
@@ -68,7 +76,11 @@ class OllamaWorker:
         ollama_host: str = config.OLLAMA_BASE_URL,
         model: str = config.OLLAMA_MODEL,
     ) -> None:
-        self._redis = aioredis.from_url(redis_url, socket_timeout=5.0)
+        # socket_timeout=10.0 (> BLPOP's 5s block timeout) — WHY: when the
+        # timeout values were equal, Redis's own reply for an empty queue
+        # occasionally arrived just after the socket's read timeout fired,
+        # producing spurious TimeoutError tracebacks every ~5s of idle time.
+        self._redis = aioredis.from_url(redis_url, socket_timeout=10.0)
         self._ollama = AsyncClient(host=ollama_host)
         self._model = model
         self._queue_key = config.REDIS_QUEUE_KEY
@@ -124,6 +136,7 @@ class OllamaWorker:
                     model=self._model,
                     prompt=DESCRIPTION_PROMPT,
                     images=[image_b64],
+                    options=GENERATION_OPTIONS,
                 ),
                 timeout=config.OLLAMA_REQUEST_TIMEOUT,
             )
