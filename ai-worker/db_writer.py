@@ -35,6 +35,7 @@ async def write_security_event(
     camera_id: str,
     image_path: str,
     ai_description: str | None,
+    confidence: float | None = None,
 ) -> int | None:
     """
     Insert one SecurityEvent row. Returns the new row's id, or None on failure.
@@ -48,6 +49,7 @@ async def write_security_event(
                 camera_id=camera_id,
                 image_path=image_path,
                 ai_description=ai_description,
+                confidence=confidence,
             )
             session.add(event)
             await session.commit()

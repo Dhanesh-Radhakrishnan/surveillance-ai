@@ -163,6 +163,7 @@ class OllamaWorker:
                         camera_id=result.camera_id,
                         image_path=result.snapshot_path,
                         ai_description=result.ai_description,
+                        confidence=result.confidence,
                     )
         finally:
             await self._redis.aclose()

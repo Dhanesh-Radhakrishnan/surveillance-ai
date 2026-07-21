@@ -12,7 +12,7 @@ Imported by alembic/env.py as:
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import DateTime, Float, Index, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,6 +54,11 @@ class SecurityEvent(Base):
     # Nullable: worker may write the row before/without a successful VLM
     # response (Ollama timeout, model unload, etc. — handled in W3T7).
     ai_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+        # YOLO11n detection confidence (0.0–1.0) that triggered this event.
+    # Nullable for safety, but W2/W3 always populate it — DetectionEvent
+    # already carries confidence, we just weren't persisting it until now.
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         # Week 4 GET /events will filter by camera and sort by time —
