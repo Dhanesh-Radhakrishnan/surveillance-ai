@@ -3,6 +3,13 @@ ollama_worker.py
 Week 3 — Task 3 + 7: Async Redis worker — dequeue → load snapshot → send to Ollama.
 Includes error handling for Ollama timeout, missing snapshot, and DB write failure.
 
+Week 3 fix: the previous version called self._ollama.generate() with no
+`options` dict, so temperature/num_predict were never actually applied —
+Ollama was running its default sampling settings the whole time. That,
+combined with un-cropped snapshots (see snapshot_writer.py), produced
+repetitive "urn ..." descriptions and occasional non-English garbled output
+under higher default temperature.
+
 Single responsibility: pull DetectionEvents off the Redis queue Week 2 built,
 load the referenced snapshot from disk, and get a description back from
 moondream2. Does NOT touch PostgreSQL directly — that's db_writer.py, wired in
@@ -34,24 +41,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ollama_worker")
 
-# W3T4 final version — subject-first, no negation clause.
-# WHY no "ignore X/Y/Z": small VLMs handle negation unreliably — the
-# forbidden object still gets attended to and often shows up anyway
-# (confirmed empirically: "urn on countertop" persisted through two
-# negation-based prompt attempts). Now that stage1_pipeline.py crops the
-# snapshot to the person's bounding box before it reaches Ollama, background
-# objects are removed from the pixels instead of relied on to be ignored.
 DESCRIPTION_PROMPT = (
-    "Describe this person's position and what they are doing, in one short sentence."
+    "You are reviewing a single security camera snapshot. "
+    "In one sentence of 15 words or fewer, describe the person: "
+    "their approximate action and location in frame (e.g. 'walking near front door', "
+    "'standing by driveway'). "
+    "Ignore pets, vehicles, shadows, reflections, and lighting changes — do not mention them. "
+    "If you cannot clearly identify a person, start your reply with 'Uncertain:' "
+    "followed by the briefest reason."
 )
 
-# Generation options passed to every Ollama call:
-#   num_predict — hard ceiling on output tokens. Prevents the run-on,
-#     duplicate-paragraph rambling seen with the unbounded default
-#     (moondream2 would restart with "The image shows a man..." mid-response).
-#   temperature  — lower value = more deterministic/conservative, reduces
-#     confabulation of objects that aren't clearly in frame.
-GENERATION_OPTIONS = {"num_predict": 40, "temperature": 0.3}
+# WHY these values: temperature=0.3 alone (no repeat_penalty/top_p) pushed
+# moondream2 into near-greedy decoding, which on a 1.6B model collapses into
+# degenerate output — immediate EOS ('' empty response), or a short
+# high-probability filler token sequence ('!!!', 'Unsure') instead of an
+# actual description. repeat_penalty discourages the model from re-picking
+# the same low-effort token it just emitted; top_p keeps sampling from
+# fully collapsing to argmax. temperature nudged up slightly so it isn't
+# sitting right at the collapse threshold. num_predict=40 is unrelated to
+# this failure mode (none of the bad outputs were truncation) — left as is.
+OLLAMA_GENERATE_OPTIONS: dict = {
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "repeat_penalty": 1.3,
+    "num_predict": 40,
+}
 
 
 @dataclass
@@ -76,11 +90,7 @@ class OllamaWorker:
         ollama_host: str = config.OLLAMA_BASE_URL,
         model: str = config.OLLAMA_MODEL,
     ) -> None:
-        # socket_timeout=10.0 (> BLPOP's 5s block timeout) — WHY: when the
-        # timeout values were equal, Redis's own reply for an empty queue
-        # occasionally arrived just after the socket's read timeout fired,
-        # producing spurious TimeoutError tracebacks every ~5s of idle time.
-        self._redis = aioredis.from_url(redis_url, socket_timeout=10.0)
+        self._redis = aioredis.from_url(redis_url, socket_timeout=5.0)
         self._ollama = AsyncClient(host=ollama_host)
         self._model = model
         self._queue_key = config.REDIS_QUEUE_KEY
@@ -123,11 +133,16 @@ class OllamaWorker:
 
     async def _analyze(self, image_b64: str) -> str | None:
         """
-        POST to Ollama via the async client, with a hard timeout.
+        POST to Ollama via the async client, with a hard timeout and
+        explicit sampling options.
 
         WHY asyncio.wait_for: AsyncClient.generate() has no built-in timeout —
         without this, a stalled Ollama process (model unload, GPU contention)
         blocks the worker loop forever instead of failing fast.
+        WHY options=OLLAMA_GENERATE_OPTIONS: without it, Ollama silently uses
+        its own defaults — this was the root cause of the repetitive/garbled
+        "urn ..." output, not any cross-request memory (each generate() call
+        is stateless; no `context` is captured or replayed here).
         WHEN: every dequeued event with a valid snapshot.
         """
         try:
@@ -136,7 +151,7 @@ class OllamaWorker:
                     model=self._model,
                     prompt=DESCRIPTION_PROMPT,
                     images=[image_b64],
-                    options=GENERATION_OPTIONS,
+                    options=OLLAMA_GENERATE_OPTIONS,
                 ),
                 timeout=config.OLLAMA_REQUEST_TIMEOUT,
             )

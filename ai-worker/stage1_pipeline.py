@@ -73,21 +73,17 @@ class Stage1Pipeline:
         # avoids publishing N events for one qualifying frame.
         best = max(detections, key=lambda d: d.confidence)
 
-        # Crop to the detected person + 15% padding on each side, clamped to
-        # frame bounds. WHY: removes background objects (urn/kettle/curtain)
-        # from what moondream2 sees, instead of relying on prompt instructions
-        # to ignore them — small VLMs handle negation unreliably.
-        h, w = frame.shape[:2]
-        x1, y1, x2, y2 = best.box_xyxy
-        pad_x, pad_y = (x2 - x1) * 0.15, (y2 - y1) * 0.15
-        x1 = max(0, int(x1 - pad_x))
-        y1 = max(0, int(y1 - pad_y))
-        x2 = min(w, int(x2 + pad_x))
-        y2 = min(h, int(y2 + pad_y))
-        cropped = frame[y1:y2, x1:x2]
-
+        # Cropping (bbox + padding, clamped to frame bounds) now lives entirely
+        # in snapshot_writer.save_snapshot() — this file only orchestrates call
+        # order (per its own single-responsibility rule above), it doesn't own
+        # pixel-level crop math. WHY crop at all: removes background objects
+        # (urn/kettle/curtain) from what moondream2 sees, instead of relying on
+        # prompt instructions to ignore them — small VLMs handle negation
+        # unreliably.
         try:
-            snapshot_path = save_snapshot(cropped, camera_id=camera_id)
+            snapshot_path = save_snapshot(
+                frame, camera_id=camera_id, box_xyxy=best.box_xyxy
+            )
         except IOError:
             logger.exception("Snapshot write failed — event dropped for this detection.")
             return
