@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api.routes.events import router as events_router
 from backend.db.session import dispose_engine
 
 logging.basicConfig(
@@ -61,6 +62,4 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Router mount point — events.py added in the next task (W4T2).
-# from backend.api.routes.events import router as events_router
-# app.include_router(events_router)
+app.include_router(events_router)
