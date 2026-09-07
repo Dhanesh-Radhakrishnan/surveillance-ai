@@ -1,6 +1,10 @@
 """
 backend/api/routes/ws_events.py
 Week 4 — Task 5: WebSocket endpoint for live event broadcast.
+Week 4 — Task 6 refactor: EVENTS_CHANNEL moved to backend/constants.py so
+ai-worker/ollama_worker.py (a separate OS process with no FastAPI install
+requirement) doesn't need to import this fastapi-heavy module just to read
+one string constant.
 
 Single responsibility: accept WebSocket connections and relay messages
 published on a Redis pub/sub channel to each connected client. Knows
@@ -13,10 +17,6 @@ WHY Redis pub/sub (not an in-process list of WebSocket connections):
   never see events published by the worker process. Redis pub/sub is the
   one channel both processes already share (same Redis instance as the
   detection queue — just PUBLISH/SUBSCRIBE instead of RPUSH/BLPOP).
-
-Channel: EVENTS_CHANNEL below. W4T6 adds one line to the worker/db_writer
-after a successful DB write:
-    await redis_client.publish(EVENTS_CHANNEL, json.dumps({...}))
 """
 
 import asyncio
@@ -24,16 +24,12 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from backend.constants import EVENTS_CHANNEL
 from backend.db.redis_session import get_redis_connection
 
 logger = logging.getLogger("backend.api.ws_events")
 
 router = APIRouter(tags=["websocket"])
-
-# WHY defined here (not redis_session.py): this is a broadcast-endpoint
-# concern, not a general Redis config value like REDIS_URL — keeps
-# redis_session.py focused on connection lifecycle only (SOLID).
-EVENTS_CHANNEL: str = "surveillance:events:broadcast"
 
 
 async def _watch_for_disconnect(websocket: WebSocket) -> None:
@@ -59,11 +55,6 @@ async def websocket_events(websocket: WebSocket) -> None:
     await websocket.accept()
 
     redis_client = await get_redis_connection()
-    # WHY a fresh pubsub() object per connection (not the shared client
-    # directly): pubsub() is a lightweight per-subscriber view — closing it
-    # on disconnect never affects other connected clients or the shared
-    # client itself (same isolation principle as get_db_session's per-
-    # request AsyncSession, just for a different resource type).
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(EVENTS_CHANNEL)
     logger.info("WebSocket client connected — subscribed to %r", EVENTS_CHANNEL)
@@ -72,9 +63,6 @@ async def websocket_events(websocket: WebSocket) -> None:
 
     try:
         while True:
-            # WHY timeout=1.0 (not blocking forever): lets the loop come up
-            # for air once a second to check disconnect_task — otherwise a
-            # quiet channel means we'd never notice the client left.
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=1.0
             )
@@ -84,15 +72,10 @@ async def websocket_events(websocket: WebSocket) -> None:
                 await websocket.send_text(payload)
 
             if disconnect_task.done():
-                # Re-raises WebSocketDisconnect if that's why it finished;
-                # any other exception surfaces too instead of being swallowed.
                 disconnect_task.result()
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected.")
     finally:
-        # Guaranteed cleanup — same try/finally discipline as
-        # VideoCapture.release() and OllamaWorker.run_forever() elsewhere
-        # in this codebase.
         disconnect_task.cancel()
         await pubsub.unsubscribe(EVENTS_CHANNEL)
         await pubsub.aclose()

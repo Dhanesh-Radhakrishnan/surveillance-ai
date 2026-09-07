@@ -1,14 +1,9 @@
 """
 ollama_worker.py
 Week 3 — Task 3 + 7: Async Redis worker — dequeue → load snapshot → send to Ollama.
-Includes error handling for Ollama timeout, missing snapshot, and DB write failure.
-
-Week 3 fix: the previous version called self._ollama.generate() with no
-`options` dict, so temperature/num_predict were never actually applied —
-Ollama was running its default sampling settings the whole time. That,
-combined with un-cropped snapshots (see snapshot_writer.py), produced
-repetitive "urn ..." descriptions and occasional non-English garbled output
-under higher default temperature.
+Week 4 — Task 6: after a successful DB write, broadcast the event payload on
+the same Redis pub/sub channel ws_events.py subscribes to. This is the only
+publisher for that channel — ws_events.py just relays.
 
 Single responsibility: pull DetectionEvents off the Redis queue Week 2 built,
 load the referenced snapshot from disk, and get a description back from
@@ -24,6 +19,7 @@ import base64
 import gc
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +29,10 @@ from redis.exceptions import RedisError
 
 import config
 import db_writer
+
+# ai-worker/ and backend/ are sibling top-level dirs — mirrors db_writer.py's fix.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backend.constants import EVENTS_CHANNEL
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -51,15 +51,6 @@ DESCRIPTION_PROMPT = (
     "followed by the briefest reason."
 )
 
-# WHY these values: temperature=0.3 alone (no repeat_penalty/top_p) pushed
-# moondream2 into near-greedy decoding, which on a 1.6B model collapses into
-# degenerate output — immediate EOS ('' empty response), or a short
-# high-probability filler token sequence ('!!!', 'Unsure') instead of an
-# actual description. repeat_penalty discourages the model from re-picking
-# the same low-effort token it just emitted; top_p keeps sampling from
-# fully collapsing to argmax. temperature nudged up slightly so it isn't
-# sitting right at the collapse threshold. num_predict=40 is unrelated to
-# this failure mode (none of the bad outputs were truncation) — left as is.
 OLLAMA_GENERATE_OPTIONS: dict = {
     "temperature": 0.5,
     "top_p": 0.9,
@@ -97,10 +88,6 @@ class OllamaWorker:
         logger.info("OllamaWorker ready — queue=%r model=%r", self._queue_key, model)
 
     async def _dequeue(self) -> dict | None:
-        """
-        BLPOP blocks until an event exists — no polling, no wasted CPU.
-        WHEN: called continuously in the main loop.
-        """
         try:
             result = await self._redis.blpop(self._queue_key, timeout=5)
         except RedisError:
@@ -109,7 +96,7 @@ class OllamaWorker:
             return None
 
         if result is None:
-            return None  # timeout — no event waiting, loop again
+            return None
 
         _, payload = result
         try:
@@ -119,11 +106,6 @@ class OllamaWorker:
             return None
 
     def _load_snapshot_b64(self, snapshot_path: str) -> str | None:
-        """
-        Reads the JPEG from disk and base64-encodes it.
-        WHY sync: local disk read is cheap; not worth an aiofiles dependency.
-        Returns None (not raise) on missing file — caller decides what to do.
-        """
         path = Path(snapshot_path)
         if not path.exists():
             logger.error("Snapshot file missing: %s", path)
@@ -132,19 +114,6 @@ class OllamaWorker:
         return base64.standard_b64encode(raw).decode("utf-8")
 
     async def _analyze(self, image_b64: str) -> str | None:
-        """
-        POST to Ollama via the async client, with a hard timeout and
-        explicit sampling options.
-
-        WHY asyncio.wait_for: AsyncClient.generate() has no built-in timeout —
-        without this, a stalled Ollama process (model unload, GPU contention)
-        blocks the worker loop forever instead of failing fast.
-        WHY options=OLLAMA_GENERATE_OPTIONS: without it, Ollama silently uses
-        its own defaults — this was the root cause of the repetitive/garbled
-        "urn ..." output, not any cross-request memory (each generate() call
-        is stateless; no `context` is captured or replayed here).
-        WHEN: every dequeued event with a valid snapshot.
-        """
         try:
             response = await asyncio.wait_for(
                 self._ollama.generate(
@@ -170,8 +139,38 @@ class OllamaWorker:
             logger.exception("Ollama analysis failed — description will be null.")
             return None
 
+    async def _broadcast_event(self, written: db_writer.WrittenEvent) -> None:
+        """
+        W4T6: publish the just-written row on EVENTS_CHANNEL for ws_events.py
+        to relay to connected dashboard clients.
+
+        WHY the same field shape as SecurityEventResponse: the dashboard's
+        WebSocket handler and its REST /events handler should be able to
+        share one deserialization type on the frontend — no reason for the
+        live-push payload to look different from the paginated-history payload.
+
+        WHY this never raises: a broadcast is a "nice to have" side effect —
+        the event is already durably in Postgres by this point. A Redis
+        publish hiccup must not be treated the same as a failed DB write.
+        """
+        payload = {
+            "id": written.id,
+            "timestamp": written.timestamp.isoformat(),
+            "camera_id": written.camera_id,
+            "snapshot_filename": Path(written.image_path).name,
+            "ai_description": written.ai_description,
+            "confidence": written.confidence,
+        }
+        try:
+            await self._redis.publish(EVENTS_CHANNEL, json.dumps(payload))
+            logger.debug("Broadcast event id=%d on %r", written.id, EVENTS_CHANNEL)
+        except RedisError:
+            logger.exception(
+                "WebSocket broadcast publish failed — event id=%d still persisted in DB.",
+                written.id,
+            )
+
     async def process_one(self) -> AnalysisResult | None:
-        """One full dequeue → load → analyze cycle. Returns None if nothing to do."""
         event = await self._dequeue()
         if event is None:
             return None
@@ -192,19 +191,12 @@ class OllamaWorker:
             result.camera_id, result.ai_description,
         )
 
-        # Explicit cleanup — same discipline as capture_loop.py / redis_publisher.py
         del image_b64
         gc.collect()
 
         return result
 
     async def run_forever(self) -> None:
-        """
-        WHY the outer try/except: process_one() calls Redis + Ollama + dict
-        parsing — any unexpected error here (not just the ones already handled
-        internally) must not kill the worker process on 24/7 hardware.
-        WHEN: runs until Ctrl+C.
-        """
         logger.info("Worker loop starting — Ctrl+C to stop.")
         try:
             while True:
@@ -216,19 +208,22 @@ class OllamaWorker:
                     continue
 
                 if result is not None:
-                    await db_writer.write_security_event(
+                    written = await db_writer.write_security_event(
                         camera_id=result.camera_id,
                         image_path=result.snapshot_path,
                         ai_description=result.ai_description,
                         confidence=result.confidence,
                     )
+                    # W4T6: only broadcast on a confirmed DB write — a None
+                    # here means db_writer already logged the failure (W3T7).
+                    if written is not None:
+                        await self._broadcast_event(written)
         finally:
             await self._redis.aclose()
             await db_writer.dispose_engine()
             logger.info("Redis connection closed.")
 
 
-# ── Entry point ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     worker = OllamaWorker()
     try:
