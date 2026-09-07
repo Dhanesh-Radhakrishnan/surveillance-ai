@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes.events import router as events_router
 from backend.db.session import dispose_engine
+from backend.db.redis_session import dispose_redis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,13 +30,16 @@ logger = logging.getLogger("backend.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: nothing to warm up yet — engine is lazy-created on first use.
-    logger.info("FastAPI startup — DB engine ready on first query.")
+    # Startup: nothing to warm up yet — DB engine is lazy-created on first
+    # use, and the Redis client is already connected at import time
+    # (backend/db/redis_session.py) since it's a single shared pooled client.
+    logger.info("FastAPI startup — DB engine ready on first query, Redis client ready.")
     yield
-    # Shutdown: release the connection pool cleanly — mirrors
+    # Shutdown: release both connection pools cleanly — mirrors
     # ollama_worker.py's finally-block discipline for the Redis worker.
     await dispose_engine()
-    logger.info("FastAPI shutdown — DB engine disposed.")
+    await dispose_redis()
+    logger.info("FastAPI shutdown — DB engine and Redis client disposed.")
 
 
 app = FastAPI(
