@@ -15,7 +15,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends
+from redis.asyncio import Redis
 
+from backend.db.redis_session import get_redis_connection
+from backend.services.health import HealthResponse, build_health_response
 from backend.api.routes.events import router as events_router
 from backend.api.routes.ws_events import router as ws_events_router
 from backend.db.session import dispose_engine
@@ -61,10 +65,15 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    """Basic liveness check — full queue/VRAM version is W4T7, not this."""
-    return {"status": "ok"}
+@app.get("/health", response_model=HealthResponse)
+async def health(redis: Redis = Depends(get_redis_connection)) -> HealthResponse:
+    """
+    W4T7: liveness + resource metrics — queue depth and VRAM usage.
+    WHY Depends(get_redis_connection): same DI pattern as every other
+    Redis-touching route/handler in this codebase — never instantiate
+    a client directly inside a route.
+    """
+    return await build_health_response(redis)
 
 
 app.include_router(events_router)
