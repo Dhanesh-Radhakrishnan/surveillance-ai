@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes.events import router as events_router
+from backend.api.routes.ws_events import router as ws_events_router
 from backend.db.session import dispose_engine
 from backend.db.redis_session import dispose_redis
 
@@ -67,3 +68,4 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(events_router)
+app.include_router(ws_events_router)
