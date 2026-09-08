@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* W5T2: design tokens — surveillance/security-console palette */
+
+  /* Backgrounds — cool steel-blue dark, not pure black (reduces eye strain on long monitoring sessions) */
+  --color-bg-primary: #0a0e14;
+  --color-bg-secondary: #12171f;
+  --color-bg-tertiary: #1a212c;
+
+  /* Text */
+  --color-text-primary: #e6eaf0;
+  --color-text-secondary: #8593a8;
+  --color-text-muted: #55606f;
+
+  /* Borders / dividers */
+  --color-border: #232b38;
+  --color-border-hover: #34404f;
+
+  /* Status colors — security-console conventions */
+  --color-live: #00d9ff;         /* cyan — active WebSocket / live feed indicator */
+  --color-online: #22c55e;       /* green — system healthy, camera online */
+  --color-alert: #ff4d4f;        /* red — high-priority detection / danger */
+  --color-warning: #f59e0b;      /* amber — medium confidence / queue backlog */
+  --color-info: #6366f1;         /* indigo — informational badges, timestamps */
+
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace; /* for timestamps, IDs, confidence scores */
+}
