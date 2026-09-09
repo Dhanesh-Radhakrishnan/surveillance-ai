@@ -25,6 +25,9 @@ from backend.api.routes.ws_events import router as ws_events_router
 from backend.db.session import dispose_engine
 from backend.db.redis_session import dispose_redis
 
+from fastapi.staticfiles import StaticFiles
+app.mount("/snapshots", StaticFiles(directory=str(config.SNAPSHOT_DIR)), name="snapshots")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",

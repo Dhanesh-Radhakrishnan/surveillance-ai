@@ -1,15 +1,12 @@
 // frontend/src/components/LiveEventFeed.tsx
 /**
- * Week 5 — Task 4: Live event feed — flashes on new event, shows AI
- * description + timestamp.
- *
- * Single responsibility: render what useEventSocket (W5T3) gives it.
- * Knows nothing about WebSocket lifecycle, reconnects, or backoff —
- * that's already owned by the hook.
+ * Week 5 — Task 4 (updated for T5): rows are now clickable, opening
+ * SnapshotViewer for the clicked event. Flash logic unchanged from T4.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useEventSocket, type SocketStatus } from '../hooks/useEventSocket'
+import { useEventSocket, type SocketStatus, type SecurityEventPayload } from '../hooks/useEventSocket'
+import SnapshotViewer from './SnapshotViewer'
 
 const FLASH_DURATION_MS = 1500
 
@@ -47,9 +44,8 @@ function StatusPill({ status }: { status: SocketStatus }) {
 export default function LiveEventFeed() {
   const { events, status } = useEventSocket()
   const [flashingId, setFlashingId] = useState<number | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEventPayload | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // WHY a ref set (not events.length): StrictMode double-invokes effects
-  // in dev — a length-based check would re-flash the same id twice.
   const seenIds = useRef<Set<number>>(new Set())
 
   useEffect(() => {
@@ -83,7 +79,8 @@ export default function LiveEventFeed() {
         {events.map((event) => (
           <li
             key={event.id}
-            className={`px-4 py-3 transition-colors duration-500 ${
+            onClick={() => setSelectedEvent(event)}
+            className={`px-4 py-3 cursor-pointer transition-colors duration-500 hover:bg-bg-tertiary ${
               flashingId === event.id ? 'bg-live/10' : 'bg-transparent'
             }`}
           >
@@ -103,6 +100,10 @@ export default function LiveEventFeed() {
           </li>
         ))}
       </ul>
+
+      {selectedEvent && (
+        <SnapshotViewer event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
     </div>
   )
 }
