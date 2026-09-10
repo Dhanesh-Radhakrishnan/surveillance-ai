@@ -1,121 +1,79 @@
+// frontend/src/App.tsx
+/**
+ * Week 5 — Task 7: Responsive layout — works on both laptop screens.
+ * Also resolves the W5T6 pending decision: tab switcher (Live / History).
+ *
+ * Single responsibility: top-level shell — header + tab nav + the two
+ * already-built panels (LiveEventFeed W5T4/5, HistoryPage W5T6). No
+ * fetching, no WebSocket logic lives here.
+ *
+ * WHY both panels stay mounted (CSS `hidden`, not conditional unmount):
+ * LiveEventFeed owns a useEventSocket connection with its own reconnect
+ * backoff and a capped 50-event buffer. Unmounting on tab switch would
+ * tear down the socket and drop that buffer every time the user checks
+ * History — CSS hidden keeps the connection alive underneath instead.
+ *
+ * WHY no split-pane / breakpoint logic: both target machines (RTX laptop,
+ * i5 laptop) are laptop-class screens in the same rough size band
+ * (~1366x768 to ~1920x1080) — a single-column layout that fills the
+ * viewport height scales across that whole range without needing
+ * different layouts per breakpoint. Padding alone (`sm:p-4`) is enough
+ * breathing room on the larger screen.
+ */
+
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import LiveEventFeed from './components/LiveEventFeed'
+import HistoryPage from './components/HistoryPage'
+
+type Tab = 'live' | 'history'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'live', label: 'Live' },
+  { id: 'history', label: 'History' },
+]
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [tab, setTab] = useState<Tab>('live')
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="flex flex-col h-screen bg-bg-primary text-text-primary">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <h1 className="text-sm font-semibold tracking-wide">
+          Surveillance <span className="text-live">AI</span>
+        </h1>
 
-      <div className="ticks"></div>
+        <nav className="flex gap-1 bg-bg-secondary border border-border rounded-full p-1">
+          {TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              aria-pressed={tab === id}
+              className={`text-xs font-mono px-3 py-1.5 rounded-full transition-colors ${
+                tab === id
+                  ? 'bg-live/10 text-live'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </header>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {/* min-h-0 is required here: without it, a flex child with its own
+          overflow-y-auto (both panels) refuses to shrink below its content
+          size and the header gets pushed off-screen instead of the panel
+          scrolling internally. */}
+      <main className="flex-1 min-h-0 p-3 sm:p-4">
+        <div className={tab === 'live' ? 'h-full' : 'hidden'}>
+          <LiveEventFeed />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+        <div className={tab === 'history' ? 'h-full' : 'hidden'}>
+          <HistoryPage />
         </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      </main>
+    </div>
   )
 }
 

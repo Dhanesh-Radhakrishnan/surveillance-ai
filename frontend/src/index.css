@@ -27,3 +27,23 @@
   --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace; /* for timestamps, IDs, confidence scores */
 }
+
+/*
+ * W5T7: full-viewport-height base rules.
+ *
+ * WHY needed now (wasn't before): App.tsx previously rendered the Vite
+ * template's content-sized hero section — height was whatever the content
+ * needed. The real dashboard (LiveEventFeed / HistoryPage) uses `h-full`
+ * flex chains that assume an ancestor with an explicit height. Without
+ * html/body/#root set to 100%, `h-full` resolves to 0 and both panels
+ * collapse instead of filling the screen on either laptop.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
