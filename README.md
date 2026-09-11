@@ -63,24 +63,50 @@ noticeably smarter system is simply better hardware — not better code.
 
 ## Architecture (two-stage pipeline)
 
-```
-Camera → OpenCV → YOLO11n (CPU)  →  Redis queue
-                                          │
-                                          ▼
-                          Async worker dequeues event
-                                          │
-                                          ▼
-                    moondream2 via Ollama HTTP (GPU, 4GB)
-                                          │
-                                          ▼
-                     PostgreSQL  +  WebSocket broadcast
-                                          │
-                                          ▼
-                        React dashboard (live feed + history)
+The split exists because of the 4GB VRAM ceiling above: Stage 1 runs
+continuously and never touches the GPU, so the entire VRAM budget stays
+free for Stage 2, which only wakes up when there's actually something to
+analyze.
+
+```mermaid
+flowchart TD
+    subgraph S1["Stage 1 — lightweight trigger · runs continuously · CPU only"]
+        CAM["📷 Camera / video file"] --> CV["OpenCV capture loop"]
+        CV --> YOLO["YOLO11n person detection<br/>(CPU, confidence-filtered)"]
+        YOLO -- "no person" --> CV
+        YOLO -- "person detected" --> SNAP["Save cropped snapshot<br/>(bbox + 15% padding, /tmp)"]
+        SNAP --> RQ["RPUSH → Redis queue"]
+    end
+
+    subgraph S2["Stage 2 — async AI analysis · on-demand · GPU (4GB budget)"]
+        RQ --> WRK["Async worker<br/>BLPOP dequeue"]
+        WRK --> IMG["Load snapshot from disk"]
+        IMG --> OLL["moondream2 via Ollama HTTP<br/>(localhost:11434, RTX 3050)"]
+        OLL --> DESC["AI description<br/>(≤15 words)"]
+        DESC --> DB[("PostgreSQL<br/>SecurityEvent row")]
+        DB --> PUB["PUBLISH → Redis pub/sub<br/>(events:broadcast)"]
+    end
+
+    subgraph API["FastAPI backend"]
+        PUB --> WS["WebSocket /ws/events"]
+        DB --> REST["REST GET /events<br/>(cursor-paginated history)"]
+    end
+
+    subgraph UI["React dashboard (i3 laptop, LAN)"]
+        WS --> LIVE["Live event feed"]
+        REST --> HIST["History search + snapshot viewer"]
+    end
 ```
 
-*(A full Mermaid diagram with each stage's responsibilities lives in
-`docs/architecture.md` — see W6T4.)*
+**Reading the diagram:**
+- **Stage 1 never blocks on Stage 2.** A busy or restarting Ollama process
+  can't stall the capture loop — the queue absorbs the gap.
+- **The dashboard never receives raw video.** Only structured events
+  (description + snapshot filename + confidence) cross the WebSocket —
+  matching the "no raw video stream in browser" rule for this project.
+- **Two independent OS processes**, not two threads in one app — the
+  capture/detection loop and the AI worker can be restarted, scaled, or
+  moved to a different machine independently.
 
 ## Stack
 
@@ -98,4 +124,4 @@ Camera → OpenCV → YOLO11n (CPU)  →  Redis queue
 Currently in Week 6 (optimisation, docs, GitHub polish). Weeks 1–5
 (infrastructure → detection pipeline → AI worker → REST/WebSocket API →
 React dashboard) are complete. Setup instructions and the multi-node
-write-up land in follow-up tasks this week.
+write-up land in follow-up tasks this week (W6T5, W6T6).
