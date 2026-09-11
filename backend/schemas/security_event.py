@@ -13,8 +13,9 @@ Always construct SecurityEventResponse.model_validate(orm_obj) instead.
 """
 
 from datetime import datetime
+from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ── Response: one event ──────────────────────────────────────────────────────
@@ -48,6 +49,20 @@ class SecurityEventResponse(BaseModel):
         le=1.0,
         description="YOLO detection confidence that triggered this event.",
     )
+
+    @field_validator("snapshot_filename", mode="before")
+    @classmethod
+    def _strip_to_filename(cls, v: str) -> str:
+        """
+        WHY: image_path in the DB is the full absolute server path
+        (e.g. /tmp/surveillance_snapshots/cam01_....jpg) — db_writer.py
+        never stripped it, only ollama_worker.py's WebSocket broadcast did
+        (via Path(written.image_path).name). GET /events was leaking the
+        full path straight through, which produced a malformed
+        /snapshots//tmp/... URL on the frontend and a silent 404 →
+        'Snapshot unavailable'. This makes both delivery paths consistent.
+        """
+        return Path(v).name
 
 
 # ── Request: query params for GET /events (W4T2, extended W5T6) ────────────
