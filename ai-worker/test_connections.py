@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import asyncpg
 import redis.asyncio as aioredis
 from ollama import AsyncClient
@@ -7,9 +8,9 @@ from ollama import AsyncClient
 # --- CONFIGURATION (Adjust to your infrastructure) ---
 POSTGRES_HOST = "localhost"
 POSTGRES_PORT = 5432
-POSTGRES_USER = "surveillance"
-POSTGRES_PASSWORD = "2@2serveillance"   # Special chars safe here — no URL encoding needed
-POSTGRES_DB = "surveillance_db"
+POSTGRES_USER = os.environ.get("POSTGRES_USER")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD")   # Special chars safe here — no URL encoding needed
+POSTGRES_DB = os.environ.get("POSTGRES_DB")
 
 REDIS_URL = "redis://localhost:6379/0"
 OLLAMA_HOST = "http://localhost:11434"

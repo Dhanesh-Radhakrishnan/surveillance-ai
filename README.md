@@ -154,7 +154,7 @@ docker-compose up -d
 
   ```
   POSTGRES_USER=surveillance
-  POSTGRES_PASSWORD=2@2serveillance
+  POSTGRES_PASSWORD=changeme
   POSTGRES_DB=surveillance_db
   ```
 

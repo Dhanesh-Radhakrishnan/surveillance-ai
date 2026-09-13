@@ -20,14 +20,14 @@ from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ── Config (env-overridable, mirrors ai-worker/config.py defaults) ───────────
-POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "surveillance")
-POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "2@2serveillance")
-POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "surveillance_db")
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
 POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT: int = int(os.environ.get("POSTGRES_PORT", "5432"))
 
 _DATABASE_URL = (
-    f"postgresql+asyncpg://{POSTGRES_USER}:"
+    f"postgresql+asyncpg://{quote_plus(POSTGRES_USER)}:"
     f"{quote_plus(POSTGRES_PASSWORD)}@"
     f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 )

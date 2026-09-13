@@ -47,9 +47,9 @@ REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 REDIS_QUEUE_KEY: str = "surveillance:detection_events"
 
 # ── PostgreSQL (Week 3, Task 5) ───────────────────────────────────────────────
-POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "surveillance")
-POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "2@2serveillance")
-POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "surveillance_db")
+POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "")
+POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "")
+POSTGRES_DB: str = os.environ.get("POSTGRES_DB", "")
 POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT: int = int(os.environ.get("POSTGRES_PORT", "5432"))
 

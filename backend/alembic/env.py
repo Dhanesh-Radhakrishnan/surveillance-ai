@@ -5,19 +5,15 @@ Alembic migration environment — async-native, SQLAlchemy 2.0.
 Reads DATABASE_URL from the environment. Set it before running migrations:
 
   Windows PowerShell:
-    $env:DATABASE_URL = "postgresql+asyncpg://surveillance:2%402serveillance@localhost:5432/surveillance_db"
+    $env:DATABASE_URL = "postgresql+asyncpg://surveillance:changeme@localhost:5432/surveillance_db"
     alembic upgrade head
 
   Linux / WSL / Docker:
-    export DATABASE_URL="postgresql+asyncpg://surveillance:2%402serveillance@localhost:5432/surveillance_db"
+    export DATABASE_URL="postgresql+asyncpg://surveillance:changeme@localhost:5432/surveillance_db"
     alembic upgrade head
 
   Or add it to a .env file and load it via python-dotenv before calling alembic.
 
-Note on the password:
-  The raw password is  2@2serveillance
-  In a URL DSN the '@' MUST be percent-encoded as %40, giving:
-    2%402serveillance
   asyncpg decodes this automatically; no manual unquoting needed.
 """
 
@@ -51,7 +47,7 @@ if not _db_url:
     raise RuntimeError(
         "DATABASE_URL environment variable is not set.\n"
         "Example:\n"
-        "  postgresql+asyncpg://surveillance:2%402serveillance@localhost:5432/surveillance_db\n"
+        "  postgresql+asyncpg://surveillance:changeme@localhost:5432/surveillance_db\n"
         "Set it in your shell or .env before running alembic commands."
     )
 config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
