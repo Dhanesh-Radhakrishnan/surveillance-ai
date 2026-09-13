@@ -146,7 +146,7 @@ docker-compose up -d
   i3 frontend/backend split and any future capture node on the LAN can
   reach them, not just processes on `localhost`.
 - Default credentials live in `docker-compose.yml` as fallbacks
-  (`surveillance` / `2@2serveillance`). **These are development defaults,
+  (`surveillance` / `changeme`). **These are development defaults,
   not secrets** — they're checked into version control today and will be
   moved to `.env`-only placeholders before this repo goes public (tracked
   as a Week 6 cleanup item). Override them via a root `.env` file if you
@@ -188,7 +188,7 @@ pip install fastapi uvicorn[standard] sqlalchemy[asyncio] alembic asyncpg \
 
 | Variable | Used by | Default | Notes |
 |---|---|---|---|
-| `DATABASE_URL` | Alembic (`backend/alembic/env.py`) | *(none — required)* | `postgresql+asyncpg://surveillance:2%402serveillance@localhost:5432/surveillance_db` — the `@` in the password **must** be percent-encoded as `%40` |
+| `DATABASE_URL` | Alembic (`backend/alembic/env.py`) | *(none — required)* | `postgresql+asyncpg://surveillance:changeme@localhost:5432/surveillance_db` — the `@` in the password **must** be percent-encoded as `%40` |
 | `POSTGRES_USER/PASSWORD/DB/HOST/PORT` | backend, ai-worker | matches `docker-compose.yml` | Only needed if you changed the Docker defaults |
 | `REDIS_URL` | backend, ai-worker | `redis://localhost:6379/0` | |
 | `OLLAMA_BASE_URL` | ai-worker | `http://localhost:11434` | |
@@ -291,9 +291,3 @@ speculatively before it's needed. Per this project's own scope rules,
 reserve hardware stays documented, not built around, until there's an
 actual second camera to justify it.
 
-## Status
-
-Currently in Week 6 (optimisation, docs, GitHub polish). Weeks 1–5
-(infrastructure → detection pipeline → AI worker → REST/WebSocket API →
-React dashboard) are complete. Setup instructions and the multi-node
-write-up land in follow-up tasks this week (W6T5, W6T6).
