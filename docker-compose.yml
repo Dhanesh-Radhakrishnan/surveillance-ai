@@ -8,9 +8,9 @@ services:
     container_name: surveillance_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-surveillance}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-2@2serveillance}
-      POSTGRES_DB: ${POSTGRES_DB:-surveillance_db}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env — see .env.example}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — see .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env — see .env.example}
     ports:
       - "0.0.0.0:5432:5432"               # LAN-accessible; restrict with firewall in prod
     volumes:
